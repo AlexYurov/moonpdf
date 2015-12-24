@@ -71,6 +71,12 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <PropertyGroup>
+    <SignAssembly>true</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyOriginatorKeyFile>key.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
@@ -143,10 +149,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="headertemplate.json" />
+    <None Include="key.snk" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>xcopy $(SolutionDir)..\bin\MuLib\$(PlatformName)\libmupdf.dll $(TargetDir) /Y</PostBuildEvent>
+    <PostBuildEvent>xcopy $(SolutionDir)..\bin\MuLib\libmupdf.dll $(TargetDir) /Y</PostBuildEvent>
   </PropertyGroup>
   <PropertyGroup>
     <PreBuildEvent>$(SolutionDir)..\bin\HeaderLicensePrepend\HeaderLicensePrepend.exe $(ProjectDir)headertemplate.json</PreBuildEvent>
