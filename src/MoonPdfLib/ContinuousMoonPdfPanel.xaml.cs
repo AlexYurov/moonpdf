@@ -39,59 +39,115 @@ namespace MoonPdfLib
 {
 	internal partial class ContinuousMoonPdfPanel : UserControl, IMoonPdfPanel
 	{
-		private MoonPdfPanel parent;
-		private ScrollViewer scrollViewer;
-		private CustomVirtualizingPanel virtualPanel;
-		private PdfImageProvider imageProvider;
-		private VirtualizingCollection<IEnumerable<PdfImage>> virtualizingPdfPages;
-						
-		public ContinuousMoonPdfPanel(MoonPdfPanel parent)
+		private readonly MoonPdfPanel _pdfPanel;
+		private ScrollViewer _viewer;
+
+	    private ScrollViewer ScrollViewer
+	    {
+	        get
+	        {
+
+                if (_viewer == null)
+                {
+                    throw new InvalidOperationException("The operation is not available until all control components are loaded.");
+                }
+                return _viewer;
+            }
+	    }
+
+        private CustomVirtualizingPanel _virtualPanel;
+	    private CustomVirtualizingPanel VirtualPanel
+	    {
+	        get
+	        {
+	            if (_virtualPanel == null)
+	            {
+	                throw new InvalidOperationException("The operation is not available until all control components are loaded.");
+	            }
+	            return _virtualPanel;
+	        }
+	    }
+
+	    private PdfImageProvider _imageProvider;
+		private VirtualizingCollection<IEnumerable<PdfImage>> _virtualizingPdfPages;
+	    private bool _loadCurrentSourceOnRender;
+
+
+        public ContinuousMoonPdfPanel(MoonPdfPanel pdfPanel)
 		{
 			InitializeComponent();
 
-			this.parent = parent;
-			this.SizeChanged += ContinuousMoonPdfPanel_SizeChanged;
+			_pdfPanel = pdfPanel;
+			SizeChanged += ContinuousMoonPdfPanel_SizeChanged;
+            Loaded += OnLoaded;
 		}
 
-		void ContinuousMoonPdfPanel_SizeChanged(object sender, SizeChangedEventArgs e)
+	    protected override void OnRender(DrawingContext drawingContext)
+	    {
+	        base.OnRender(drawingContext);
+            _virtualPanel = VisualTreeHelperEx.FindChild<CustomVirtualizingPanel>(this);
+            _viewer = VisualTreeHelperEx.FindChild<ScrollViewer>(this);
+        }
+
+	    private void OnLoaded(object sender, RoutedEventArgs routedEventArgs)
+        {
+            if (_loadCurrentSourceOnRender)
+	        {
+	            RenderCurrentSource();
+	        }
+	    }
+
+	    void ContinuousMoonPdfPanel_SizeChanged(object sender, SizeChangedEventArgs e)
 		{
-			this.scrollViewer = VisualTreeHelperEx.FindChild<ScrollViewer>(this);
+			//this._scrollViewer = VisualTreeHelperEx.FindChild<ScrollViewer>(this);
 		}
 
         public void Load(IPdfSource source, string password = null)
         {
-            this.virtualPanel = VisualTreeHelperEx.FindChild<CustomVirtualizingPanel>(this);
-            this.scrollViewer = VisualTreeHelperEx.FindChild<ScrollViewer>(this);
-            this.virtualPanel.PageRowBounds = this.parent.PageRowBounds.Select(f => f.SizeIncludingOffset).ToArray();
-            this.imageProvider = new PdfImageProvider(source, this.parent.TotalPages,
-                                        new PageDisplaySettings(this.parent.GetPagesPerRow(), this.parent.ViewType, this.parent.HorizontalMargin, this.parent.Rotation),
-                                        password: password);
+            this._imageProvider = new PdfImageProvider(
+                source, this._pdfPanel.TotalPages, 
+                new PageDisplaySettings(this._pdfPanel.GetPagesPerRow(), this._pdfPanel.ViewType, this._pdfPanel.HorizontalMargin, this._pdfPanel.Rotation), 
+                password: password);
 
-            if (this.parent.ZoomType == ZoomType.Fixed)
-                this.CreateNewItemsSource();
-            else if (this.parent.ZoomType == ZoomType.FitToHeight)
-                this.ZoomToHeight();
-            else if (this.parent.ZoomType == ZoomType.FitToWidth)
-                this.ZoomToWidth();
-
-            if (this.scrollViewer != null)
+            if (_virtualPanel != null)
             {
-                this.scrollViewer.Visibility = System.Windows.Visibility.Visible;
-                this.scrollViewer.ScrollToTop();
+                RenderCurrentSource();
+            }
+            else
+            {
+                _loadCurrentSourceOnRender = true;
             }
         }
 
-        public void Unload()
-        {
-            this.scrollViewer.Visibility = System.Windows.Visibility.Collapsed;
-            this.scrollViewer.ScrollToHorizontalOffset(0);
-            this.scrollViewer.ScrollToVerticalOffset(0);
-            this.imageProvider = null;
+	    private void RenderCurrentSource()
+	    {
+	        this.VirtualPanel.PageRowBounds = this._pdfPanel.PageRowBounds.Select(f => f.SizeIncludingOffset).ToArray();
 
-            if (this.virtualizingPdfPages != null)
+	        if (this._pdfPanel.ZoomType == ZoomType.Fixed)
+	            this.CreateNewItemsSource();
+	        else if (this._pdfPanel.ZoomType == ZoomType.FitToHeight)
+	            this.ZoomToHeight();
+	        else if (this._pdfPanel.ZoomType == ZoomType.FitToWidth)
+	            this.ZoomToWidth();
+
+	        if (this.ScrollViewer != null)
+	        {
+	            this.ScrollViewer.Visibility = System.Windows.Visibility.Visible;
+	            this.ScrollViewer.ScrollToTop();
+	        }
+	    }
+
+	    public void Unload()
+        {
+            this.ScrollViewer.Visibility = System.Windows.Visibility.Collapsed;
+            this.ScrollViewer.ScrollToHorizontalOffset(0);
+            this.ScrollViewer.ScrollToVerticalOffset(0);
+            this._imageProvider = null;
+
+            if (this._virtualizingPdfPages != null)
             {
-                this.virtualizingPdfPages.CleanUpAllPages();
-                this.virtualizingPdfPages = null;
+                this._virtualizingPdfPages.CleanUpAllPages();
+                this._virtualizingPdfPages = null;
             }
 
             this.itemsControl.ItemsSource = null;
@@ -101,20 +157,21 @@ namespace MoonPdfLib
 		{
 			var pageTimeout = TimeSpan.FromSeconds(2);
 
-			if (this.virtualizingPdfPages != null)
-				this.virtualizingPdfPages.CleanUpAllPages();
+			if (this._virtualizingPdfPages != null)
+				this._virtualizingPdfPages.CleanUpAllPages();
 
-			this.virtualizingPdfPages = new AsyncVirtualizingCollection<IEnumerable<PdfImage>>(this.imageProvider, this.parent.GetPagesPerRow(), pageTimeout);
-			this.itemsControl.ItemsSource = this.virtualizingPdfPages;
+			this._virtualizingPdfPages = new AsyncVirtualizingCollection<IEnumerable<PdfImage>>(this._imageProvider, this._pdfPanel.GetPagesPerRow(), pageTimeout);
+			this.itemsControl.ItemsSource = this._virtualizingPdfPages;
 		}
 		
 		#region Zoom specific code
+
 		public float CurrentZoom
 		{
 			get
 			{
-				if (this.imageProvider != null)
-					return this.imageProvider.Settings.ZoomFactor;
+				if (this._imageProvider != null)
+					return this._imageProvider.Settings.ZoomFactor;
 
 				return 1.0f;
 			}
@@ -122,27 +179,27 @@ namespace MoonPdfLib
 
 		public void ZoomToWidth()
 		{
-			var scrollBarWidth = this.scrollViewer.ComputedVerticalScrollBarVisibility == System.Windows.Visibility.Visible ? SystemParameters.VerticalScrollBarWidth : 0;
+			var scrollBarWidth = ScrollViewer.ComputedVerticalScrollBarVisibility == Visibility.Visible ? SystemParameters.VerticalScrollBarWidth : 0;
 			scrollBarWidth += 2; // Magic number, sorry :)
 
-			ZoomInternal((this.ActualWidth - scrollBarWidth) / this.parent.PageRowBounds.Max(f => f.SizeIncludingOffset.Width));
+			ZoomInternal((ActualWidth - scrollBarWidth) / _pdfPanel.PageRowBounds.Max(f => f.SizeIncludingOffset.Width));
 		}
 
 		public void ZoomToHeight()
 		{
-			var scrollBarHeight = this.scrollViewer.ComputedHorizontalScrollBarVisibility == System.Windows.Visibility.Visible ? SystemParameters.HorizontalScrollBarHeight : 0;
+			var scrollBarHeight = ScrollViewer.ComputedHorizontalScrollBarVisibility == Visibility.Visible ? SystemParameters.HorizontalScrollBarHeight : 0;
 
-			ZoomInternal((this.ActualHeight - scrollBarHeight) / this.parent.PageRowBounds.Max(f => f.SizeIncludingOffset.Height));
+			ZoomInternal((ActualHeight - scrollBarHeight) / _pdfPanel.PageRowBounds.Max(f => f.SizeIncludingOffset.Height));
 		}
 
 		public void ZoomIn()
 		{
-			ZoomInternal(this.CurrentZoom + this.parent.ZoomStep);
+			ZoomInternal(this.CurrentZoom + this._pdfPanel.ZoomStep);
 		}
 
 		public void ZoomOut()
 		{
-			ZoomInternal(this.CurrentZoom - this.parent.ZoomStep);
+			ZoomInternal(this.CurrentZoom - this._pdfPanel.ZoomStep);
 		}
 
 		public void Zoom(double zoomFactor)
@@ -152,46 +209,46 @@ namespace MoonPdfLib
 
 		private void ZoomInternal(double zoomFactor)
 		{
-			if (zoomFactor > this.parent.MaxZoomFactor)
-				zoomFactor = this.parent.MaxZoomFactor;
-			else if (zoomFactor < this.parent.MinZoomFactor)
-				zoomFactor = this.parent.MinZoomFactor;
+			if (zoomFactor > this._pdfPanel.MaxZoomFactor)
+				zoomFactor = this._pdfPanel.MaxZoomFactor;
+			else if (zoomFactor < this._pdfPanel.MinZoomFactor)
+				zoomFactor = this._pdfPanel.MinZoomFactor;
 
-			var yOffset = this.scrollViewer.VerticalOffset;
-			var xOffset = this.scrollViewer.HorizontalOffset;
+			var yOffset = this.ScrollViewer.VerticalOffset;
+			var xOffset = this.ScrollViewer.HorizontalOffset;
 			var zoom = this.CurrentZoom;
 
 			if (Math.Abs(Math.Round(zoom, 2) - Math.Round(zoomFactor, 2)) == 0.0)
 				return;
 
-			this.virtualPanel.PageRowBounds = this.parent.PageRowBounds.Select(f => new Size(f.Size.Width * zoomFactor + f.HorizontalOffset, f.Size.Height * zoomFactor + f.VerticalOffset)).ToArray();
-			this.imageProvider.Settings.ZoomFactor = (float)zoomFactor;
+			this.VirtualPanel.PageRowBounds = this._pdfPanel.PageRowBounds.Select(f => new Size(f.Size.Width * zoomFactor + f.HorizontalOffset, f.Size.Height * zoomFactor + f.VerticalOffset)).ToArray();
+			this._imageProvider.Settings.ZoomFactor = (float)zoomFactor;
 			
 			this.CreateNewItemsSource();
 
-			this.scrollViewer.ScrollToHorizontalOffset( (xOffset / zoom) * zoomFactor);
-			this.scrollViewer.ScrollToVerticalOffset( (yOffset / zoom) * zoomFactor);
+			this.ScrollViewer.ScrollToHorizontalOffset( (xOffset / zoom) * zoomFactor);
+			this.ScrollViewer.ScrollToVerticalOffset( (yOffset / zoom) * zoomFactor);
 		}
 		#endregion
 
 		public void GotoPreviousPage()
 		{
-			if (this.scrollViewer == null)
+			if (this.ScrollViewer == null)
 				return;
 
-			var currentPageIndex = GetCurrentPageIndex(this.parent.ViewType);
+			var currentPageIndex = GetCurrentPageIndex(this._pdfPanel.ViewType);
 
 			if (currentPageIndex == 0)
 				return;
 
-			var startIndex = PageHelper.GetVisibleIndexFromPageIndex(currentPageIndex - 1, this.parent.ViewType);
-			var verticalOffset = this.virtualPanel.GetVerticalOffsetByItemIndex(startIndex);
-			this.scrollViewer.ScrollToVerticalOffset(verticalOffset);
+			var startIndex = PageHelper.GetVisibleIndexFromPageIndex(currentPageIndex - 1, this._pdfPanel.ViewType);
+			var verticalOffset = this.VirtualPanel.GetVerticalOffsetByItemIndex(startIndex);
+			this.ScrollViewer.ScrollToVerticalOffset(verticalOffset);
 		}
 
 		public void GotoNextPage()
 		{
-			var nextIndex = PageHelper.GetNextPageIndex(GetCurrentPageIndex(this.parent.ViewType), this.parent.TotalPages, this.parent.ViewType);
+			var nextIndex = PageHelper.GetNextPageIndex(GetCurrentPageIndex(this._pdfPanel.ViewType), this._pdfPanel.TotalPages, this._pdfPanel.ViewType);
 
 			if ( nextIndex == -1 )
 				return;
@@ -201,20 +258,20 @@ namespace MoonPdfLib
 
 		public void GotoPage(int pageNumber)
 		{
-			if (this.scrollViewer == null)
+			if (this.ScrollViewer == null)
 				return;
 
-			var startIndex = PageHelper.GetVisibleIndexFromPageIndex(pageNumber - 1, this.parent.ViewType);
-			var verticalOffset = this.virtualPanel.GetVerticalOffsetByItemIndex(startIndex);
-			this.scrollViewer.ScrollToVerticalOffset(verticalOffset);
+			var startIndex = PageHelper.GetVisibleIndexFromPageIndex(pageNumber - 1, this._pdfPanel.ViewType);
+			var verticalOffset = this.VirtualPanel.GetVerticalOffsetByItemIndex(startIndex);
+			this.ScrollViewer.ScrollToVerticalOffset(verticalOffset);
 		}
 
 		public int GetCurrentPageIndex(ViewType viewType)
 		{
-			if (this.scrollViewer == null)
+			if (this.ScrollViewer == null)
 				return 0;
 
-			var pageIndex = this.virtualPanel.GetItemIndexByVerticalOffset(this.scrollViewer.VerticalOffset);
+			var pageIndex = this.VirtualPanel.GetItemIndexByVerticalOffset(this.ScrollViewer.VerticalOffset);
 
 			if( pageIndex > 0 )
 			{
@@ -229,7 +286,7 @@ namespace MoonPdfLib
 
 		ScrollViewer IMoonPdfPanel.ScrollViewer
 		{
-			get { return this.scrollViewer; }
+			get { return this.ScrollViewer; }
 		}
 
 		UserControl IMoonPdfPanel.Instance
